@@ -16,6 +16,21 @@ from ..extensions import db
 from ..db_models import DBcorpus, TranscriptionModel
 from ..serialization import TranscriptionModelSchema
 
+class MyPickler(pickle._Pickler):
+    def save(self, obj):
+        print('pickling object  {0} of type {1}'.format(obj, type(obj)))
+        try:
+            pickle._Pickler.save(self, obj)
+        except:
+            import pdb; pdb.set_trace()
+            raise
+
+# attempting workaround to get TF to pickle properly:
+import tensorflow as tf
+setattr(tf.contrib.rnn.GRUCell, '__deepcopy__', lambda self, _: self)
+setattr(tf.contrib.rnn.BasicLSTMCell, '__deepcopy__', lambda self, _: self)
+setattr(tf.contrib.rnn.MultiRNNCell, '__deepcopy__', lambda self, _: self)
+
 def create_RNN_CTC_model(model: TranscriptionModel, corpus_storage_path: Path,
                          models_storage_path: Path):
     """Create a persephone RNN CTC model
@@ -33,7 +48,7 @@ def create_RNN_CTC_model(model: TranscriptionModel, corpus_storage_path: Path,
         corpus = pickle.load(pickle_file)
 
     corpus_reader = CorpusReader(corpus)
-    model = rnn_ctc.Model(
+    persephone_model = rnn_ctc.Model(
         exp_dir,
         corpus_reader,
         num_layers=model.num_layers,
@@ -41,6 +56,10 @@ def create_RNN_CTC_model(model: TranscriptionModel, corpus_storage_path: Path,
         beam_width=model.beam_width,
         decoding_merge_repeated=model.decoding_merge_repeated
         )
+    model_pickle_path = model_path / "model.p"
+    with model_pickle_path.open('wb') as pickle_file:
+        p = MyPickler(pickle_file, protocol=4)
+        p.dump(persephone_model)
     # TODO: pickle model at this point?
 
 def search():
@@ -74,7 +93,6 @@ def post(modelInfo):
 
     model_uuid = uuid.uuid1()
 
-    import pdb; pdb.set_trace()
     current_model = TranscriptionModel(
         name=modelInfo['name'],
         corpus=current_corpus,
